@@ -1,0 +1,15 @@
+# ANTLR generado (se regenera con build_grammar.py, no se versiona)
+generated/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
