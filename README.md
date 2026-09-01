@@ -5,7 +5,7 @@
 * Javier Linares (231135)
 * Gadiel Ocaña
 * Cindy Gualim
-* Jennifer
+* Jennifer Toxcon (21276)
 
 ---
 
@@ -17,7 +17,8 @@ de flujo, clases y listas, apoyado en una tabla de simbolos con entornos
 anidados (global, funcion, clase, bloque).
 
 Ver **`docs/ARCHITECTURE.md`** para la arquitectura completa y la
-repartición de trabajo por persona.
+repartición de trabajo por persona. La documentacion de la tabla de
+simbolos esta en **`docs/Tabla de Simbolos.md`**.
 
 ---
 
@@ -58,6 +59,7 @@ CC3032-Proyecto/
 ├── pruebas/                  # .cps validos/invalidos por regla semantica
 ├── tests/                    # pytest
 └── docs/
+    ├── README.md              # Tabla de simbolos (P1): diseno, uso y enunciado
     ├── ARCHITECTURE.md
     ├── Especificaciones.md
     └── Generador_de_Analizadores_Semanticos.pdf

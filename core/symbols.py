@@ -1,34 +1,32 @@
 """
-Tabla de Simbolos (25 pts) - Persona 1.
+Tabla de Simbolos 
 
 Entornos anidados (global, funcion, clase, bloque). Este es el modulo que
-consumen los otros 3 (Persona 2, 3 y 4), asi que la firma de estas clases
-no deberia cambiar una vez que el equipo la de por buena - si necesitan
-cambiarla, avisen antes de romperla.
+consumen los otros 3 (Persona 2, 3 y 4). CONTRATO CONGELADO: si necesitan
+cambiar una firma, coordinen con el equipo; no la rompan en silencio.
 
 Referencia: Libro del Dragon, manejo de ambitos y tabla de simbolos
 (seccion de analisis semantico / entornos anidados).
 
-Lo que hay que implementar (marcado con TODO):
-  - Scope.define / Scope.resolve
-  - SymbolTable.enter_scope / exit_scope / current
-  - ScopeHelpers.require_declared
-
-Casos que las pruebas en tests/test_symbols.py van a exigir:
-  - Redeclaracion en el mismo scope -> error.
-  - Mismo nombre en scopes anidados distintos -> permitido (shadowing).
-  - Resolver una variable global desde dentro de una funcion.
-  - Un bloque anidado no debe "fugar" sus variables hacia afuera al salir.
+API publica (congelada):
+  - Symbol(name, type, kind, *, initialized=True, line=0, column=0)
+  - Scope.define / Scope.resolve / Scope.resolve_local
+  - SymbolTable.enter_scope / exit_scope / current / snapshot / environments
+  - ScopeHelpers.require_declared / define_or_error
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from core.errors import ErrorReporter
 from core.types import Type
 
 ScopeKind = str  # "global" | "function" | "class" | "block"
+
+# kinds validos de Symbol.kind — P2/P3/P4 deben usar exactamente estos.
+SYMBOL_KINDS = ("var", "const", "param", "function", "class")
+SCOPE_KINDS = ("global", "function", "class", "block")
 
 
 @dataclass
@@ -36,6 +34,9 @@ class Symbol:
     name: str
     type: Type
     kind: str  # "var" | "const" | "param" | "function" | "class"
+    initialized: bool = True
+    line: int = 0
+    column: int = 0
 
 
 class Scope:
@@ -54,8 +55,10 @@ class Scope:
         ErrorReporter si retorna False - Scope no conoce el ErrorReporter
         a proposito, para mantenerlo simple de probar.
         """
-        # TODO(P1): implementar.
-        raise NotImplementedError
+        if symbol.name in self.symbols:
+            return False
+        self.symbols[symbol.name] = symbol
+        return True
 
     def resolve(self, name: str) -> Symbol | None:
         """
@@ -66,18 +69,30 @@ class Scope:
         una funcion anidada resuelve nombres subiendo por el scope donde
         fue DEFINIDA, no por el scope desde donde fue LLAMADA.
         """
-        # TODO(P1): implementar.
-        raise NotImplementedError
+        found = self.resolve_local(name)
+        if found is not None:
+            return found
+        if self.parent is not None:
+            return self.parent.resolve(name)
+        return None
 
     def resolve_local(self, name: str) -> Symbol | None:
         """Como resolve(), pero sin subir a los padres. Util para chequear redeclaracion."""
         return self.symbols.get(name)
+
+    def __repr__(self) -> str:
+        names = ", ".join(self.symbols)
+        return f"Scope(kind={self.kind!r}, symbols=[{names}])"
 
 
 class SymbolTable:
     def __init__(self):
         self._global = Scope(kind="global", parent=None)
         self._stack: list[Scope] = [self._global]
+        # Entornos creados a lo largo del analisis (no se descartan al salir).
+        # El enunciado pide el estado de la tabla por cada entorno, no solo
+        # los que siguen abiertos al final del recorrido.
+        self._environments: list[Scope] = [self._global]
 
     @property
     def global_scope(self) -> Scope:
@@ -88,13 +103,51 @@ class SymbolTable:
 
     def enter_scope(self, kind: ScopeKind) -> Scope:
         """Crea un scope hijo del scope actual, lo apila y lo retorna."""
-        # TODO(P1): implementar.
-        raise NotImplementedError
+        child = Scope(kind=kind, parent=self.current())
+        self._stack.append(child)
+        self._environments.append(child)
+        return child
 
     def exit_scope(self) -> None:
         """Desapila el scope actual, volviendo al padre."""
-        # TODO(P1): implementar.
-        raise NotImplementedError
+        if len(self._stack) <= 1:
+            raise RuntimeError("No se puede salir del scope global")
+        self._stack.pop()
+
+    def snapshot(self) -> list[tuple[str, list[Symbol]]]:
+        """
+        Scopes vivos en este momento, de global (indice 0) al actual.
+
+        Util durante el recorrido (por ejemplo para inspeccionar el entorno
+        corriente). Cada entrada es `(kind, simbolos_en_ese_scope)`.
+        """
+        return [(scope.kind, list(scope.symbols.values())) for scope in self._stack]
+
+    def environments(self) -> list[tuple[str, list[Symbol]]]:
+        """
+        Todos los entornos creados durante el analisis, incluidos los ya
+        cerrados: global, funcion, clase y bloque.
+
+        Esta es la salida que pide el enunciado para el panel del IDE:
+        estado de la tabla de simbolos por cada entorno.
+        """
+        return [
+            (scope.kind, list(scope.symbols.values()))
+            for scope in self._environments
+        ]
+
+    def format_environments(self) -> str:
+        """Texto legible de `environments()`, para presentacion o el IDE."""
+        lines: list[str] = []
+        for i, (kind, symbols) in enumerate(self.environments()):
+            if symbols:
+                body = ", ".join(
+                    f"{s.kind} {s.name}: {s.type!r}" for s in symbols
+                )
+            else:
+                body = "(vacio)"
+            lines.append(f"[{i}] {kind}: {body}")
+        return "\n".join(lines)
 
 
 @dataclass
@@ -113,8 +166,13 @@ class ScopeHelpers:
         Busca `name` desde el scope actual. Si no existe, reporta un error
         de categoria "ambito" y retorna None.
         """
-        # TODO(P1): implementar usando self.table.current().resolve(name).
-        raise NotImplementedError
+        symbol = self.table.current().resolve(name)
+        if symbol is None:
+            self.reporter.error(
+                ctx, "ambito", f"'{name}' no esta declarado en este ambito"
+            )
+            return None
+        return symbol
 
     def define_or_error(self, symbol: Symbol, ctx) -> bool:
         """
@@ -122,5 +180,11 @@ class ScopeHelpers:
         scope, reporta un error de categoria "ambito" (redeclaracion) y
         retorna False.
         """
-        # TODO(P1): implementar usando self.table.current().define(symbol).
-        raise NotImplementedError
+        if self.table.current().define(symbol):
+            return True
+        self.reporter.error(
+            ctx,
+            "ambito",
+            f"'{symbol.name}' ya esta declarado en este ambito",
+        )
+        return False

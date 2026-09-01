@@ -3,9 +3,7 @@ Pruebas de core/symbols.py (Persona 1).
 
 Corran con: pytest tests/test_symbols.py -v
 
-Estas pruebas fallan a proposito hasta que se implementen los TODO en
-core/symbols.py. Sirven como definicion de "terminado" del modulo de
-Tabla de Simbolos.
+Definicion de "terminado" del modulo de Tabla de Simbolos (Persona 1).
 """
 
 import pytest
@@ -104,3 +102,99 @@ def test_scope_helpers_define_or_error_reporta_redeclaracion():
     assert helpers.define_or_error(make_var("x"), FakeCtx()) is True
     assert helpers.define_or_error(make_var("x"), FakeCtx()) is False
     assert reporter.has_errors()
+
+
+def test_require_declared_retorna_el_simbolo_si_existe():
+    table = SymbolTable()
+    reporter = ErrorReporter()
+    helpers = ScopeHelpers(table=table, reporter=reporter)
+    x = make_var("x")
+    table.current().define(x)
+
+    class FakeToken:
+        line = 1
+        column = 1
+
+    class FakeCtx:
+        start = FakeToken()
+
+    assert helpers.require_declared("x", FakeCtx()) is x
+    assert not reporter.has_errors()
+
+
+def test_resolve_local_no_sube_a_los_padres():
+    table = SymbolTable()
+    table.current().define(make_var("x"))
+    inner = table.enter_scope("block")
+    assert inner.resolve("x") is not None
+    assert inner.resolve_local("x") is None
+    table.exit_scope()
+
+
+def test_exit_scope_no_puede_salir_del_global():
+    table = SymbolTable()
+    with pytest.raises(RuntimeError):
+        table.exit_scope()
+
+
+def test_snapshot_incluye_scopes_vivos_para_el_ide():
+    table = SymbolTable()
+    table.current().define(make_var("g"))
+    table.enter_scope("function")
+    table.current().define(make_var("f"))
+
+    snap = table.snapshot()
+    assert [kind for kind, _ in snap] == ["global", "function"]
+    assert [s.name for s in snap[0][1]] == ["g"]
+    assert [s.name for s in snap[1][1]] == ["f"]
+
+    table.exit_scope()
+    assert [kind for kind, _ in table.snapshot()] == ["global"]
+
+
+def test_environments_conserva_scopes_cerrados_para_el_reporte():
+    table = SymbolTable()
+    table.current().define(make_var("g"))
+    table.enter_scope("function")
+    table.current().define(make_var("f"))
+    table.exit_scope()
+    table.enter_scope("class")
+    table.current().define(make_var("c"))
+    table.exit_scope()
+    table.enter_scope("block")
+    table.current().define(make_var("b"))
+    table.exit_scope()
+
+    kinds = [kind for kind, _ in table.environments()]
+    assert kinds == ["global", "function", "class", "block"]
+    names = [
+        [s.name for s in symbols] for _, symbols in table.environments()
+    ]
+    assert names == [["g"], ["f"], ["c"], ["b"]]
+    assert [kind for kind, _ in table.snapshot()] == ["global"]
+    texto = table.format_environments()
+    assert "[0] global:" in texto
+    assert "[1] function:" in texto
+
+
+def test_scope_mixin_inicializa_estado_compartido():
+    from semantico.scope_mixin import ScopeMixin
+
+    mixin = ScopeMixin()
+    assert mixin.table.current().kind == "global"
+    assert mixin.loop_depth == 0
+    assert mixin.function_stack == []
+    assert mixin.current_class is None
+    assert mixin.helpers.table is mixin.table
+
+
+def test_semantic_visitor_combina_mixins_y_se_puede_construir():
+    from semantico.visitor import SemanticVisitor
+
+    visitor = SemanticVisitor()
+    inner = visitor.enter_scope("block")
+    assert inner.kind == "block"
+    assert inner.parent is visitor.table.global_scope
+    visitor.exit_scope()
+    assert visitor.table.current().kind == "global"
+
