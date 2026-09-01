@@ -9,6 +9,9 @@ igual que el analizador lexico/sintactico de la fase anterior.
 
 from dataclasses import dataclass, field
 
+from antlr4.Token import Token
+from antlr4.tree.Tree import TerminalNode
+
 
 CATEGORIAS = (
     "tipo",
@@ -37,9 +40,19 @@ class ErrorReporter:
     errors: list[SemanticError] = field(default_factory=list)
 
     def error(self, ctx, category: str, message: str) -> None:
-        """ctx es cualquier ParserRuleContext de ANTLR (tiene .start.line / .start.column)."""
+        """
+        `ctx` puede ser un ParserRuleContext (usa `.start`), un TerminalNode
+        de ANTLR (p. ej. un Identifier suelto; usa `.symbol`) o un Token
+        directo (D3: reportar sobre un TerminalNode sin normalizar hacia un
+        Token da AttributeError, y pasa en decenas de sitios).
+        """
         assert category in CATEGORIAS, f"categoria desconocida: {category}"
-        token = ctx.start
+        if isinstance(ctx, Token):
+            token = ctx
+        elif isinstance(ctx, TerminalNode):
+            token = ctx.symbol
+        else:
+            token = ctx.start
         self.errors.append(SemanticError(token.line, token.column, category, message))
 
     def has_errors(self) -> bool:

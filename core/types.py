@@ -1,18 +1,11 @@
 """
 Sistema de tipos de Compiscript.
 
-Dueno: Persona 2 (Sistema de Tipos + Listas). Este archivo es un borrador
-inicial para que Persona 1 pueda usar `Type` en `core/symbols.py` desde ya.
-Persona 2 debe revisarlo, completarlo y es quien tiene la ultima palabra
-sobre las reglas de coercion/compatibilidad.
-
-PENDIENTE A DECIDIR EN EQUIPO (ver docs/ARCHITECTURE.md):
-  - Compiscript.g4 no tiene tipo/literal `float`. El enunciado pide validar
-    aritmetica con integer O float. Si agregan `float` a la gramatica,
-    agreguen aqui `PrimitiveKind.FLOAT` y actualicen `is_numeric`.
-  - Especificaciones.md usa `+` para concatenar strings
-    (`"Hola " + nombre`). Decidir si `is_assignable`/el chequeo de la
-    operacion `+` permite `string + string` (o `string + cualquier tipo`).
+Dueno: Persona 2 (Sistema de Tipos + Listas). Reglas congeladas en
+docs/PLAN_IMPLEMENTACION.md §2 (DEC-1..DEC-7): `float` se agrego a la
+gramatica (DEC-1), `+` esta sobrecargado para string+string (DEC-2), `null`
+solo es asignable a ClassType/ArrayType (DEC-3), y existe un tipo `ERROR`
+para recuperacion sin cascadas (DEC-4).
 """
 
 from __future__ import annotations
@@ -23,10 +16,12 @@ from enum import Enum, auto
 
 class PrimitiveKind(Enum):
     INTEGER = auto()
+    FLOAT = auto()
     STRING = auto()
     BOOLEAN = auto()
     NULL = auto()
     VOID = auto()  # tipo de retorno de una funcion sin ": type"
+    ERROR = auto()  # recuperacion de errores (DEC-4): nunca se reporta de nuevo
 
 
 class Type:
@@ -59,8 +54,15 @@ class FunctionType(Type):
         return f"({params}) -> {self.return_type!r}"
 
 
-@dataclass
+@dataclass(eq=False)
 class ClassType(Type):
+    """
+    D4: eq=False porque el `__eq__`/`__hash__` que genera @dataclass compara
+    (y hashea) recursivamente `fields`/`methods`. Con una clase autoreferente
+    (`class Node { let next: Node; }`) eso es recursion infinita. En su lugar
+    se compara e identifica por nombre.
+    """
+
     name: str
     parent: "ClassType | None" = None
     fields: dict[str, Type] = field(default_factory=dict)
@@ -77,30 +79,55 @@ class ClassType(Type):
             cls = cls.parent
         return None
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, ClassType) and self.name == other.name
+
+    def __hash__(self) -> int:
+        return hash(self.name)
+
     def __repr__(self) -> str:
         return self.name
 
 
 # Instancias unicas para los tipos primitivos (comparar con `is` o `==`, son frozen).
 INTEGER = PrimitiveType(PrimitiveKind.INTEGER)
+FLOAT = PrimitiveType(PrimitiveKind.FLOAT)
 STRING = PrimitiveType(PrimitiveKind.STRING)
 BOOLEAN = PrimitiveType(PrimitiveKind.BOOLEAN)
 NULL = PrimitiveType(PrimitiveKind.NULL)
 VOID = PrimitiveType(PrimitiveKind.VOID)
+ERROR = PrimitiveType(PrimitiveKind.ERROR)
 
 
 def is_numeric(t: Type) -> bool:
-    # TODO(P2): agregar FLOAT aqui si se agrega al lenguaje.
-    return t == INTEGER
+    return t in (INTEGER, FLOAT)
+
+
+def max_tipo(a: Type, b: Type) -> Type:
+    """
+    Tipo resultante de combinar dos tipos numericos (DEC-1, conversion
+    ampliadora): integer op integer -> integer; si cualquiera es float,
+    el resultado es float.
+    """
+    if a == FLOAT or b == FLOAT:
+        return FLOAT
+    return INTEGER
 
 
 def is_assignable(target: Type, value: Type) -> bool:
     """True si un valor de tipo `value` se puede asignar a una variable de tipo `target`."""
+    if target == ERROR or value == ERROR:
+        # DEC-4: el tipo ERROR nunca genera un error nuevo, para no encadenar.
+        return True
     if target == value:
         return True
     if value == NULL:
-        # TODO(P2): decidir si null es asignable a cualquier tipo o solo a
-        # tipos de clase / arreglo (no deberia serlo a integer/string/boolean).
+        # DEC-3: null solo es asignable a tipos de clase o arreglo; no hay
+        # conversion valida de null a un tipo primitivo (integer/float/
+        # string/boolean).
+        return isinstance(target, (ClassType, ArrayType))
+    if target == FLOAT and value == INTEGER:
+        # DEC-1: integer -> float es una conversion ampliadora implicita.
         return True
     if isinstance(target, ArrayType) and isinstance(value, ArrayType):
         return is_assignable(target.element_type, value.element_type)

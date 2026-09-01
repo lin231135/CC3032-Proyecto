@@ -52,7 +52,7 @@ SymbolTable
 
 Scope (kind, parent, symbols{})
   define(symbol)     inserta solo en ESTE scope; False si ya existe
-  resolve(name)      busca aqui y, si no, sube por parent (closures)
+  resolve(name)      busca aqui y, si no, sube por parent (visibilidad)
   resolve_local(name) solo este scope (redeclaracion / shadowing)
 
 Symbol (name, type, kind, initialized, line, column)
@@ -62,8 +62,9 @@ Decisiones de diseno:
 
 1. **Pila + cadena de padres.** `enter_scope` apila un hijo del scope
    actual. `resolve` no usa la pila de llamada: sube por `parent`, que es
-   el entorno donde el nombre **se definio**. Eso es lo que pide el PDF
-   para closures (*capturando variables del entorno de definicion*).
+   el entorno donde el nombre **se definio**. La cadena de ambitos resuelve
+   la visibilidad de las variables capturadas; su representacion en
+   ejecucion corresponde a fases posteriores (§7.3.8 del libro).
 2. **`Scope` no reporta errores.** Retorna `bool` / `None`. Quien llama
    decide como reportar. Facilita probar la tabla sin ANTLR.
 3. **`ScopeHelpers`** concentra el patron repetido
