@@ -3,19 +3,16 @@ Ambito + Funciones + Control de Flujo (Persona 3). Cubre R7, R10, R12-R19,
 R25, R27 de docs/PLAN_IMPLEMENTACION.md §5, con las reglas de scope finas
 de §4.6.
 
-Nota de integracion (para F5): `_aplicar_llamada` esta implementado aqui de
-verdad, pero `semantico/type_mixin.py` (F2) ya define un stub del mismo
-nombre que devuelve ERROR. Como `SemanticVisitor` hereda
-`(ScopeMixin, TypeMixin, FunctionMixin, ClassMixin, CompiscriptVisitor)`,
-TypeMixin queda ANTES que FunctionMixin en el MRO, asi que ahora mismo el
-stub de TypeMixin gana silenciosamente y las llamadas a funcion evaluan
-siempre a ERROR via el fold de `visitLeftHandSide`. Es el mismo riesgo que
-advierte el plan en §9 (colision de nombres entre mixins), aplicado a un
-helper en vez de a un visit*. No se resuelve aqui: F3 solo puede tocar este
-archivo, y el arreglo (reordenar el MRO en semantico/visitor.py o retirar el
-stub) es trabajo de integracion de F5. Por eso `check_call_args` -que no
-colisiona con nada- se prueba directo en tests/test_funciones.py, y no a
-traves de una llamada real `f(1);`.
+F5 reordeno el MRO de SemanticVisitor (semantico/visitor.py) para que
+FunctionMixin quede antes que TypeMixin: `_aplicar_llamada` ya no lo tapa
+el stub de type_mixin.py, las llamadas a funcion (`f()`) funcionan de
+punta a punta.
+
+F5 (prepass): `visitFunctionDeclaration` no vuelve a declarar (ni a
+reportar un falso "ya esta declarado" de) una funcion global cuyo nodo ya
+proceso `semantico/prepass.py` (marcado por identidad en
+`self._nodos_prepasados`) -- es lo que permite la recursion mutua entre
+funciones globales sin que la funcion se declare dos veces.
 """
 
 from __future__ import annotations
@@ -112,10 +109,14 @@ class FunctionMixin:
 
         tipo_funcion = FunctionType(param_types=tuple(tipos_param), return_type=tipo_retorno)
 
-        if self.current_class is None:
+        ya_prepasada = id(ctx) in getattr(self, "_nodos_prepasados", ())
+        if self.current_class is None and not ya_prepasada:
             # R14/R15: el nombre queda visible ANTES de visitar el cuerpo,
             # en el scope donde se declara (global o el de una funcion
             # contenedora) -> recursion directa/mutua y funciones anidadas.
+            # Una funcion global ya la declara el prepass (F5) para que la
+            # recursion mutua no dependa del orden de declaracion; aqui solo
+            # falta visitar su cuerpo.
             simbolo = Symbol(
                 name=nombre,
                 type=tipo_funcion,

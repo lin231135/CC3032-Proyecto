@@ -17,6 +17,7 @@ from core.errors import SemanticError
 from core.symbols import SymbolTable
 from generated.CompiscriptLexer import CompiscriptLexer
 from generated.CompiscriptParser import CompiscriptParser
+from semantico.prepass import ejecutar_prepass
 from semantico.visitor import SemanticVisitor
 
 
@@ -73,6 +74,10 @@ def analizar(fuente: str, nombre: str = "<memoria>") -> Resultado:
     tree = parser.program()
 
     visitor = SemanticVisitor()
+    # Pasada 1 (plan §4.2): registra por adelantado funciones globales y
+    # clases, para que la recursion mutua y la herencia hacia adelante no
+    # dependan del orden de declaracion. Pasada 2: recorrido completo.
+    ejecutar_prepass(visitor, tree)
     visitor.visit(tree)
 
     return Resultado(

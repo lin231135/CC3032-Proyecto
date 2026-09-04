@@ -2,17 +2,16 @@
 Clases y objetos (Persona 4). Cubre R20-R22 de
 docs/PLAN_IMPLEMENTACION.md §5.
 
-Nota de integracion (para F5, misma trampa que documenta function_mixin.py
-para `_aplicar_llamada`): `_aplicar_propiedad` esta implementado aqui de
-verdad, pero `semantico/type_mixin.py` (F2) ya define un stub con el mismo
-nombre que devuelve ERROR. Como `SemanticVisitor` hereda
-`(ScopeMixin, TypeMixin, FunctionMixin, ClassMixin, CompiscriptVisitor)`,
-TypeMixin queda ANTES que ClassMixin en el MRO y su stub gana en silencio:
-ahora mismo `obj.campo` y `obj.metodo()` evaluan siempre a ERROR via el fold
-de `visitLeftHandSide`, sin reportar nada (por diseno de ERROR, DEC-4). Por
-eso `_aplicar_propiedad` se prueba aqui llamandolo directo, no con acceso
-`.` real de punta a punta. `visitNewExpr` y `visitThisExpr` no colisionan
-con nada y si funcionan de punta a punta.
+F5 reordeno el MRO de SemanticVisitor (semantico/visitor.py) para que
+ClassMixin quede antes que TypeMixin: `_aplicar_propiedad` ya no lo tapa el
+stub de type_mixin.py, `obj.campo`/`obj.metodo()` funcionan de punta a
+punta.
+
+F5 (prepass): `visitClassDeclaration` no vuelve a crear/registrar una clase
+cuyo nodo ya proceso `semantico/prepass.py` (marcado por identidad en
+`self._nodos_prepasados`) -- si lo hiciera, reportaria un falso "ya esta
+declarada" para CADA clase del programa, porque el prepass usa el mismo
+`self.clases`/scope global para resolver herencia hacia adelante.
 """
 
 from __future__ import annotations
@@ -37,8 +36,13 @@ class ClassMixin:
 
     def visitClassDeclaration(self, ctx: "CompiscriptParser.ClassDeclarationContext") -> None:
         nombre = ctx.Identifier(0).getText()
+        ya_prepasada = id(ctx) in getattr(self, "_nodos_prepasados", ())
 
-        if nombre in self.clases:
+        if ya_prepasada:
+            # El prepass ya creo el ClassType, resolvio el padre y registro
+            # el Symbol (o ya reporto el error correspondiente si tocaba).
+            tipo_clase = self.clases[nombre]
+        elif nombre in self.clases:
             self.reporter.error(ctx, "clase", f"la clase '{nombre}' ya esta declarada")
             tipo_clase = self.clases[nombre]
         else:
@@ -54,15 +58,15 @@ class ClassMixin:
             )
             self.define_or_error(simbolo, ctx)
 
-        if ctx.Identifier(1) is not None:
-            nombre_padre = ctx.Identifier(1).getText()
-            padre = self.clases.get(nombre_padre)
-            if padre is None:
-                self.reporter.error(ctx, "clase", f"la clase padre '{nombre_padre}' no esta declarada")
-            elif padre is tipo_clase:
-                self.reporter.error(ctx, "clase", f"la clase '{nombre}' no puede heredar de si misma")
-            else:
-                tipo_clase.parent = padre
+            if ctx.Identifier(1) is not None:
+                nombre_padre = ctx.Identifier(1).getText()
+                padre = self.clases.get(nombre_padre)
+                if padre is None:
+                    self.reporter.error(ctx, "clase", f"la clase padre '{nombre_padre}' no esta declarada")
+                elif padre is tipo_clase:
+                    self.reporter.error(ctx, "clase", f"la clase '{nombre}' no puede heredar de si misma")
+                else:
+                    tipo_clase.parent = padre
 
         clase_anterior = self.current_class
         self.current_class = tipo_clase
@@ -94,19 +98,22 @@ class ClassMixin:
             if simbolo is not None:
                 self.current_class.fields[simbolo.name] = simbolo.type
 
-    def _firma_metodo(self, fn_ctx: "CompiscriptParser.FunctionDeclarationContext") -> FunctionType:
+    def _firma_metodo(self, fn_ctx: "CompiscriptParser.FunctionDeclarationContext", es_metodo: bool = True) -> FunctionType:
         """
         Misma logica de firma que `visitFunctionDeclaration` (P3,
         function_mixin.py): no se puede reusar directamente porque ese
         metodo no devuelve el FunctionType que calcula, y F4 solo puede
-        tocar este archivo.
+        tocar este archivo. `semantico/prepass.py` (F5) tambien la usa para
+        firmas de funciones globales, con `es_metodo=False` para que una
+        funcion global literalmente llamada "constructor" no fuerce VOID
+        (DEC-6 solo aplica al constructor de una clase).
         """
         tipos_param = []
         if fn_ctx.parameters() is not None:
             for p in fn_ctx.parameters().parameter():
                 tipos_param.append(self._tipo_parametro(p))
 
-        if fn_ctx.Identifier().getText() == "constructor":
+        if es_metodo and fn_ctx.Identifier().getText() == "constructor":
             tipo_retorno = VOID  # DEC-6: constructor -> retorno VOID implicito
         elif fn_ctx.type_() is not None:
             tipo_retorno = self.resolve_type_annotation(fn_ctx.type_())
@@ -140,11 +147,13 @@ class ClassMixin:
             ctx.tipo = t
             return t
 
-        constructor = tipo_clase.methods.get("constructor")
-        if constructor is not None:
+        # Busca en la cadena de herencia (no solo en tipo_clase.methods):
+        # una subclase sin constructor propio hereda el del padre.
+        constructor = tipo_clase.lookup_member("constructor")
+        if isinstance(constructor, FunctionType):
             self.check_call_args(constructor, ctx.arguments(), ctx)
         else:
-            # R21: sin constructor declarado se exigen 0 argumentos.
+            # R21: sin constructor declarado (ni heredado) se exigen 0 argumentos.
             num_args = len(ctx.arguments().expression()) if ctx.arguments() is not None else 0
             if num_args != 0:
                 self.reporter.error(
