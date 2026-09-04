@@ -1,8 +1,7 @@
 """
 CLI del analizador: python main.py archivo.cps
 
-Sin argumentos, lanza el IDE (ide/app.py, fase F7). Por ahora, sin
-argumentos, se limita a avisar que el IDE todavia no esta listo.
+Sin argumentos, lanza el IDE (ide/app.py).
 """
 
 from __future__ import annotations
@@ -14,9 +13,10 @@ from driver import analizar_archivo
 
 def main(argv: list[str]) -> int:
     if not argv:
-        print("Uso: python main.py archivo.cps")
-        print("(El IDE todavia no esta implementado; ver fase F7.)")
-        return 1
+        from ide.app import main as lanzar_ide
+
+        lanzar_ide()
+        return 0
 
     resultado = analizar_archivo(argv[0])
 
