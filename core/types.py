@@ -126,6 +126,11 @@ def is_assignable(target: Type, value: Type) -> bool:
         # conversion valida de null a un tipo primitivo (integer/float/
         # string/boolean).
         return isinstance(target, (ClassType, ArrayType))
+    if target == NULL:
+        # DEC-3: `let d = null;` (sin anotacion) deja el simbolo con tipo
+        # NULL, que acepta una reasignacion posterior de clase o arreglo
+        # (no de otro primitivo).
+        return isinstance(value, (ClassType, ArrayType))
     if target == FLOAT and value == INTEGER:
         # DEC-1: integer -> float es una conversion ampliadora implicita.
         return True
