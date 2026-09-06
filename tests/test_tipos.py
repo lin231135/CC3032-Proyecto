@@ -199,3 +199,69 @@ def test_indexado_indice_no_entero_invalido():
     sufijo = _index_suffix('arr["x"];')
     assert visitor._aplicar_indice(ArrayType(INTEGER), sufijo) == ERROR
     assert "lista" in {e.category for e in visitor.reporter.all()}
+
+
+# ---------------------------------------------------------------------
+# DEC-3 - null: asignable solo a ClassType/ArrayType; `let d = null;` (sin
+# anotacion) deja el simbolo en NULL, que acepta una reasignacion posterior
+# de clase o arreglo (no de otro primitivo).
+# ---------------------------------------------------------------------
+
+def test_null_no_asignable_a_primitivo_invalido():
+    r = analizar("let x: integer = null;")
+    assert not r.ok
+    assert "tipo" in _categorias(r)
+
+
+def test_null_asignable_a_clase_valido():
+    assert analizar("class A {} let a: A = null;").ok
+
+
+def test_null_asignable_a_arreglo_valido():
+    assert analizar("let a: integer[] = null;").ok
+
+
+def test_null_sin_anotacion_reasignable_a_clase_valido():
+    assert analizar("class A {} let d = null; d = new A();").ok
+
+
+def test_null_sin_anotacion_reasignable_a_arreglo_valido():
+    assert analizar("let d = null; d = [1, 2, 3];").ok
+
+
+def test_null_sin_anotacion_no_reasignable_a_primitivo_invalido():
+    r = analizar("let d = null; d = 5;")
+    assert not r.ok
+    assert "tipo" in _categorias(r)
+
+
+# ---------------------------------------------------------------------
+# Un tipo desconocido en una anotacion se resuelve mas de una vez entre el
+# prepass (F5) y la pasada 2 (parametro/retorno de una funcion, campo de
+# una clase): sin memoizar por identidad de ctx, se reportaba 2 o 3 veces
+# por la misma causa.
+# ---------------------------------------------------------------------
+
+def test_tipo_desconocido_en_parametro_reporta_una_sola_vez():
+    r = analizar("function f(x: NoExiste) {}")
+    assert len(r.errores) == 1
+
+
+def test_tipo_desconocido_en_retorno_de_funcion_global_reporta_una_sola_vez():
+    r = analizar("function f(): NoExiste { return null; }")
+    assert len(r.errores) == 1
+
+
+def test_tipo_desconocido_en_retorno_de_metodo_reporta_una_sola_vez():
+    r = analizar("class A { function f(): NoExiste { return null; } }")
+    assert len(r.errores) == 1
+
+
+def test_tipo_desconocido_en_campo_de_clase_reporta_una_sola_vez():
+    r = analizar("class A { let x: NoExiste; }")
+    assert len(r.errores) == 1
+
+
+def test_dos_tipos_desconocidos_distintos_reportan_dos_errores():
+    r = analizar("function f(a: NoExiste1, b: NoExiste2) {}")
+    assert len(r.errores) == 2

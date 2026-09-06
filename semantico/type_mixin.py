@@ -56,11 +56,30 @@ class TypeMixin:
         return ctx.getChild(2 * indice - 1).getText()
 
     def resolve_type_annotation(self, ctx: "CompiscriptParser.TypeContext") -> Type:
-        """Resuelve una regla `type` (baseType ('[' ']')*) a un core.types.Type."""
+        """
+        Resuelve una regla `type` (baseType ('[' ']')*) a un core.types.Type.
+
+        Memoizado por identidad de `ctx`: el prepass (F5) y la pasada 2
+        resuelven la MISMA anotacion mas de una vez (parametro/retorno via
+        `_firma_metodo` y de nuevo en `visitFunctionDeclaration`; campo de
+        clase via el prepass y de nuevo en `visitVariableDeclaration`). Sin
+        el cache, un tipo desconocido se reporta 2 o 3 veces por la misma
+        causa.
+        """
+        cache = getattr(self, "_cache_tipos_resueltos", None)
+        if cache is None:
+            cache = {}
+            self._cache_tipos_resueltos = cache
+        clave = id(ctx)
+        if clave in cache:
+            return cache[clave]
+
         t = self._resolve_base_type(ctx.baseType())
         dims = (ctx.getChildCount() - 1) // 2
         for _ in range(dims):
             t = ArrayType(t)
+
+        cache[clave] = t
         return t
 
     def _resolve_base_type(self, ctx: "CompiscriptParser.BaseTypeContext") -> Type:

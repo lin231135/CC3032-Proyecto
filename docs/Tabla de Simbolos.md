@@ -189,7 +189,7 @@ mensaje).
 |---|---|---|
 | IDE | 15 | P4. La tabla ya expone `environments()` / `format_environments()` para el panel. |
 | Analizador sintactico y semantico | 60 | P2/P3/P4 recorren el arbol. P1 no implementa reglas de tipos ni control de flujo. |
-| **Tabla de simbolos** | **25** | **Implementada.** Entornos `global` / `function` / `class` / `block`, sin fuga al salir, shadowing permitido, closures por cadena de `parent`. |
+| **Tabla de simbolos** | **25** | **Implementada.** Entornos `global` / `function` / `class` / `block`, sin fuga al salir, shadowing permitido, visibilidad de closures por cadena de `parent` (ver nota de §2 sobre `implementa` vs `resuelve la visibilidad`). |
 
 ### 4.2 Manejo de ambito (especificaciones del PDF)
 
