@@ -37,9 +37,11 @@ class ScopeMixin:
         self.loop_depth = 0
         # P4: clase que se esta visitando (para `this` y miembros heredados)
         self.current_class = None
+        # Etiqueta del proximo visitBlock (if/else/while/...). P3 la asigna.
+        self._etiqueta_bloque = ""
 
-    def enter_scope(self, kind: ScopeKind) -> Scope:
-        return self.table.enter_scope(kind)
+    def enter_scope(self, kind: ScopeKind, name: str = "") -> Scope:
+        return self.table.enter_scope(kind, name=name)
 
     def exit_scope(self) -> None:
         self.table.exit_scope()

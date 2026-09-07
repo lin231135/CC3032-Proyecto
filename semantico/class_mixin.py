@@ -70,7 +70,7 @@ class ClassMixin:
 
         clase_anterior = self.current_class
         self.current_class = tipo_clase
-        self.enter_scope("class")
+        self.enter_scope("class", nombre)
         for miembro in ctx.classMember():
             self.visit(miembro)
         self.exit_scope()

@@ -49,7 +49,9 @@ class FunctionMixin:
         omitir = self._omitir_scope_de_bloque
         self._omitir_scope_de_bloque = False
         if not omitir:
-            self.enter_scope("block")
+            etiqueta = self._etiqueta_bloque
+            self._etiqueta_bloque = ""
+            self.enter_scope("block", etiqueta)
         self._visitar_y_escanear(ctx.statement())
         if not omitir:
             self.exit_scope()
@@ -130,7 +132,7 @@ class FunctionMixin:
         # (F4/F5) directamente en ClassType.methods; aqui solo se visita el
         # cuerpo.
 
-        self.enter_scope("function")
+        self.enter_scope("function", nombre)
         if ctx.parameters() is not None:
             self.visit(ctx.parameters())
 
@@ -248,18 +250,22 @@ class FunctionMixin:
     def visitIfStatement(self, ctx: "CompiscriptParser.IfStatementContext") -> None:
         self._verificar_condicion_booleana(ctx.expression(), "if")
         bloques = ctx.block()
+        self._etiqueta_bloque = "if"
         self.visit(bloques[0])
         if len(bloques) > 1:
+            self._etiqueta_bloque = "else"
             self.visit(bloques[1])
 
     def visitWhileStatement(self, ctx: "CompiscriptParser.WhileStatementContext") -> None:
         self._verificar_condicion_booleana(ctx.expression(), "while")
         self.loop_depth += 1
+        self._etiqueta_bloque = "while"
         self.visit(ctx.block())
         self.loop_depth -= 1
 
     def visitDoWhileStatement(self, ctx: "CompiscriptParser.DoWhileStatementContext") -> None:
         self.loop_depth += 1
+        self._etiqueta_bloque = "do-while"
         self.visit(ctx.block())
         self.loop_depth -= 1
         self._verificar_condicion_booleana(ctx.expression(), "do-while")
@@ -290,7 +296,7 @@ class FunctionMixin:
 
     def visitForStatement(self, ctx: "CompiscriptParser.ForStatementContext") -> None:
         # Scope propio para el init (`let i`), antes de la condicion.
-        self.enter_scope("block")
+        self.enter_scope("block", "for")
         if ctx.variableDeclaration() is not None:
             self.visit(ctx.variableDeclaration())
         elif ctx.assignment() is not None:
@@ -303,6 +309,7 @@ class FunctionMixin:
             self.get_type(incr)
 
         self.loop_depth += 1
+        self._etiqueta_bloque = "cuerpo for"
         self.visit(ctx.block())  # el cuerpo abre su propio scope
         self.loop_depth -= 1
 
@@ -319,7 +326,7 @@ class FunctionMixin:
             self.reporter.error(ctx, "control_flujo", f"'foreach' espera un arreglo, se recibio {tipo_iterable!r}")
             tipo_elemento = ERROR
 
-        self.enter_scope("block")
+        self.enter_scope("block", f"foreach {nombre}")
         simbolo = Symbol(
             name=nombre,
             type=tipo_elemento,
@@ -331,15 +338,17 @@ class FunctionMixin:
         self.define_or_error(simbolo, ctx)
 
         self.loop_depth += 1
+        self._etiqueta_bloque = "cuerpo foreach"
         self.visit(ctx.block())
         self.loop_depth -= 1
 
         self.exit_scope()
 
     def visitTryCatchStatement(self, ctx: "CompiscriptParser.TryCatchStatementContext") -> None:
+        self._etiqueta_bloque = "try"
         self.visit(ctx.block(0))
 
-        self.enter_scope("block")
+        self.enter_scope("block", "catch")
         nombre = ctx.Identifier().getText()
         # DEC-6: el parametro de catch(err) se declara como string.
         simbolo = Symbol(

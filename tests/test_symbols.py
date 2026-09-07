@@ -173,8 +173,9 @@ def test_environments_conserva_scopes_cerrados_para_el_reporte():
     assert names == [["g"], ["f"], ["c"], ["b"]]
     assert [kind for kind, _ in table.snapshot()] == ["global"]
     texto = table.format_environments()
-    assert "[0] global:" in texto
-    assert "[1] function:" in texto
+    assert "[0] global" in texto
+    assert "[1] function" in texto
+    assert "var g: integer" in texto
 
 
 def test_scope_mixin_inicializa_estado_compartido():

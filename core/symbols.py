@@ -40,9 +40,10 @@ class Symbol:
 
 
 class Scope:
-    def __init__(self, kind: ScopeKind, parent: "Scope | None" = None):
+    def __init__(self, kind: ScopeKind, parent: "Scope | None" = None, name: str = ""):
         self.kind = kind
         self.parent = parent
+        self.name = name
         self.symbols: dict[str, Symbol] = {}
 
     def define(self, symbol: Symbol) -> bool:
@@ -82,7 +83,8 @@ class Scope:
 
     def __repr__(self) -> str:
         names = ", ".join(self.symbols)
-        return f"Scope(kind={self.kind!r}, symbols=[{names}])"
+        etiqueta = f"{self.kind} {self.name}".strip()
+        return f"Scope(kind={etiqueta!r}, symbols=[{names}])"
 
 
 class SymbolTable:
@@ -101,9 +103,9 @@ class SymbolTable:
     def current(self) -> Scope:
         return self._stack[-1]
 
-    def enter_scope(self, kind: ScopeKind) -> Scope:
+    def enter_scope(self, kind: ScopeKind, name: str = "") -> Scope:
         """Crea un scope hijo del scope actual, lo apila y lo retorna."""
-        child = Scope(kind=kind, parent=self.current())
+        child = Scope(kind=kind, parent=self.current(), name=name)
         self._stack.append(child)
         self._environments.append(child)
         return child
@@ -139,14 +141,14 @@ class SymbolTable:
     def format_environments(self) -> str:
         """Texto legible de `environments()`, para presentacion o el IDE."""
         lines: list[str] = []
-        for i, (kind, symbols) in enumerate(self.environments()):
-            if symbols:
-                body = ", ".join(
-                    f"{s.kind} {s.name}: {s.type!r}" for s in symbols
-                )
+        for i, scope in enumerate(self._environments):
+            etiqueta = f"{scope.kind} {scope.name}".strip()
+            if scope.symbols:
+                lines.append(f"[{i}] {etiqueta}")
+                for s in scope.symbols.values():
+                    lines.append(f"    {s.kind} {s.name}: {s.type!r}")
             else:
-                body = "(vacio)"
-            lines.append(f"[{i}] {kind}: {body}")
+                lines.append(f"[{i}] {etiqueta}: (sin simbolos locales)")
         return "\n".join(lines)
 
 
